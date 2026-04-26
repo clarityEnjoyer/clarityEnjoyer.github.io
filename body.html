@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wall Street Marmot</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d1117;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            margin-bottom: 5px;
+        }
+
+        p.subtitle {
+            color: #8b949e;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        #game-container {
+            position: relative;
+        }
+
+        canvas {
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(13, 17, 23, 0.9);
+            padding: 20px;
+            border: 1px solid #00ff00;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .red-text { color: #ff3333; }
+    </style>
+</head>
+<body>
+
+    <h1>Marmot Capital Group</h1>
+    <p class="subtitle">Press SPACE to jump over the Bear Markets. Protect your portfolio!</p>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="300"></canvas>
+        <div id="start-screen">
+            <h2 id="status-text">PRESS SPACE TO TRADE</h2>
+            <p id="final-score" class="hidden">Portfolio Peak: $<span id="score-val">0</span></p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const statusText = document.getElementById('status-text');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const scoreVal = document.getElementById('score-val');
+
+        // Game State
+        let isPlaying = false;
+        let isGameOver = false;
+        let score = 0;
+        let frame = 0;
+        let gameSpeed = 5;
+        let animationId;
+
+        // The Marmot (Player)
+        const marmot = {
+            x: 50,
+            y: 200,
+            width: 30,
+            height: 30,
+            dy: 0,
+            jumpPower: -11,
+            gravity: 0.6,
+            grounded: false,
+            
+            draw() {
+                ctx.font = "30px Arial";
+                // Using a hamster/mouse emoji as a stand-in for the marmot
+                ctx.fillText("🐹", this.x, this.y + this.height);
+            },
+            
+            update() {
+                this.dy += this.gravity;
+                this.y += this.dy;
+
+                // Ground collision
+                if (this.y + this.height >= canvas.height - 30) {
+                    this.y = canvas.height - 30 - this.height;
+                    this.dy = 0;
+                    this.grounded = true;
+                } else {
+                    this.grounded = false;
+                }
+            },
+            
+            jump() {
+                if (this.grounded) {
+                    this.dy = this.jumpPower;
+                    this.grounded = false;
+                }
+            }
+        };
+
+        // Obstacles (Candlesticks)
+        let obstacles = [];
+
+        class Candlestick {
+            constructor() {
+                this.width = 15 + Math.random() * 15;
+                this.height = 30 + Math.random() * 60;
+                this.x = canvas.width;
+                this.y = canvas.height - 30 - this.height;
+                // 70% chance to be a red (bearish) candle, 30% green
+                this.isBearish = Math.random() > 0.3; 
+            }
+
+            draw() {
+                const color = this.isBearish ? '#ff3333' : '#00ff00';
+                ctx.fillStyle = color;
+                
+                // Draw the body of the candlestick
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Draw the wick (high/low lines)
+                ctx.fillRect(this.x + (this.width / 2) - 1, this.y - 15, 2, this.height + 30);
+            }
+
+            update() {
+                this.x -= gameSpeed;
+            }
+        }
+
+        function handleObstacles() {
+            // Spawn new obstacles randomly
+            if (frame % 100 === 0 || (frame % 60 === 0 && Math.random() > 0.5)) {
+                // Prevent spawning too close to the very start
+                if (frame > 60) {
+                    obstacles.push(new Candlestick());
+                }
+            }
+
+            for (let i = 0; i < obstacles.length; i++) {
+                let obs = obstacles[i];
+                obs.update();
+                obs.draw();
+
+                // Collision Detection (AABB)
+                if (
+                    marmot.x < obs.x + obs.width &&
+                    marmot.x + marmot.width - 5 > obs.x && // -5 for emoji padding buffer
+                    marmot.y < obs.y + obs.height &&
+                    marmot.y + marmot.height > obs.y
+                ) {
+                    gameOver();
+                }
+
+                // Remove off-screen obstacles
+                if (obs.x + obs.width < 0) {
+                    obstacles.shift();
+                    i--;
+                }
+            }
+        }
+
+        function drawEnvironment() {
+            // Draw x-axis (baseline)
+            ctx.strokeStyle = '#30363d';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height - 30);
+            ctx.lineTo(canvas.width, canvas.height - 30);
+            ctx.stroke();
+
+            // Draw Score
+            ctx.fillStyle = '#00ff00';
+            ctx.font = "18px 'Courier New'";
+            ctx.fillText(`Portfolio Returns: +$${Math.floor(score)}`, 20, 30);
+        }
+
+        function resetGame() {
+            marmot.y = 200;
+            marmot.dy = 0;
+            obstacles = [];
+            score = 0;
+            frame = 0;
+            gameSpeed = 5;
+            isGameOver = false;
+            startScreen.classList.add('hidden');
+            finalScoreDisplay.classList.add('hidden');
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            isPlaying = false;
+            statusText.innerText = "MARGIN CALLED";
+            statusText.classList.add('red-text');
+            scoreVal.innerText = Math.floor(score);
+            finalScoreDisplay.classList.remove('hidden');
+            startScreen.classList.remove('hidden');
+            cancelAnimationFrame(animationId);
+        }
+
+        function gameLoop() {
+            if (isGameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawEnvironment();
+            
+            marmot.update();
+            marmot.draw();
+            
+            handleObstacles();
+            
+            // Increase score and speed over time
+            score += 0.5;
+            frame++;
+            if (frame % 500 === 0) {
+                gameSpeed += 0.5;
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Controls
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault(); // Prevent page scrolling
+                
+                if (!isPlaying) {
+                    resetGame();
+                    isPlaying = true;
+                    statusText.classList.remove('red-text');
+                    gameLoop();
+                } else {
+                    marmot.jump();
+                }
+            }
+        });
+
+        // Initial draw
+        drawEnvironment();
+        marmot.draw();
+
+    </script>
+</body>
+</html>
