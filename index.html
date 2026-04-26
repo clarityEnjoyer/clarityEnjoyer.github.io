@@ -49,18 +49,19 @@
             left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
-            background: rgba(13, 17, 23, 0.9);
-            padding: 20px;
-            border: 1px solid #00ff00;
+            background: rgba(13, 17, 23, 0.95);
+            padding: 30px;
+            border: 2px solid #00ff00;
             border-radius: 8px;
             pointer-events: none;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
         }
 
         .hidden {
             display: none !important;
         }
 
-        .red-text { color: #ff3333; }
+        .red-text { color: #ff3333; border-color: #ff3333 !important; box-shadow: 0 0 20px rgba(255, 51, 51, 0.2) !important;}
     </style>
 </head>
 <body>
@@ -91,6 +92,7 @@
         let frame = 0;
         let gameSpeed = 5;
         let animationId;
+        let spawnCooldown = 0;
 
         // The Marmot (Player)
         const marmot = {
@@ -99,13 +101,12 @@
             width: 30,
             height: 30,
             dy: 0,
-            jumpPower: -11,
+            jumpPower: -12, // Slightly stronger jump
             gravity: 0.6,
             grounded: false,
             
             draw() {
                 ctx.font = "30px Arial";
-                // Using a hamster/mouse emoji as a stand-in for the marmot
                 ctx.fillText("🐹", this.x, this.y + this.height);
             },
             
@@ -136,23 +137,23 @@
 
         class Candlestick {
             constructor() {
-                this.width = 15 + Math.random() * 15;
-                this.height = 30 + Math.random() * 60;
+                this.width = 18 + Math.random() * 12;
+                // Height capped heavily to ensure playability
+                this.height = 20 + Math.random() * 35; 
                 this.x = canvas.width;
                 this.y = canvas.height - 30 - this.height;
-                // 70% chance to be a red (bearish) candle, 30% green
-                this.isBearish = Math.random() > 0.3; 
+                this.isBearish = Math.random() > 0.4; 
             }
 
             draw() {
                 const color = this.isBearish ? '#ff3333' : '#00ff00';
                 ctx.fillStyle = color;
                 
-                // Draw the body of the candlestick
+                // Draw body
                 ctx.fillRect(this.x, this.y, this.width, this.height);
                 
-                // Draw the wick (high/low lines)
-                ctx.fillRect(this.x + (this.width / 2) - 1, this.y - 15, 2, this.height + 30);
+                // Draw wick (visual only, 10px extension)
+                ctx.fillRect(this.x + (this.width / 2) - 1, this.y - 10, 2, this.height + 20);
             }
 
             update() {
@@ -161,12 +162,14 @@
         }
 
         function handleObstacles() {
-            // Spawn new obstacles randomly
-            if (frame % 100 === 0 || (frame % 60 === 0 && Math.random() > 0.5)) {
-                // Prevent spawning too close to the very start
-                if (frame > 60) {
-                    obstacles.push(new Candlestick());
-                }
+            spawnCooldown--;
+
+            // Reliable, spaced spawning
+            if (spawnCooldown <= 0) {
+                obstacles.push(new Candlestick());
+                // Random gap between 80 and 150 frames. Shrinks slightly as speed goes up to maintain rhythm.
+                let speedAdjustment = (gameSpeed - 5) * 5;
+                spawnCooldown = Math.max(60, 80 + Math.floor(Math.random() * 70) - speedAdjustment);
             }
 
             for (let i = 0; i < obstacles.length; i++) {
@@ -174,17 +177,17 @@
                 obs.update();
                 obs.draw();
 
-                // Collision Detection (AABB)
+                // Collision Detection (Forgiving: applies to body, ignores the thin wicks)
                 if (
                     marmot.x < obs.x + obs.width &&
-                    marmot.x + marmot.width - 5 > obs.x && // -5 for emoji padding buffer
+                    marmot.x + marmot.width - 5 > obs.x && 
                     marmot.y < obs.y + obs.height &&
-                    marmot.y + marmot.height > obs.y
+                    marmot.y + marmot.height - 5 > obs.y 
                 ) {
                     gameOver();
                 }
 
-                // Remove off-screen obstacles
+                // Cleanup
                 if (obs.x + obs.width < 0) {
                     obstacles.shift();
                     i--;
@@ -193,7 +196,6 @@
         }
 
         function drawEnvironment() {
-            // Draw x-axis (baseline)
             ctx.strokeStyle = '#30363d';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -201,7 +203,6 @@
             ctx.lineTo(canvas.width, canvas.height - 30);
             ctx.stroke();
 
-            // Draw Score
             ctx.fillStyle = '#00ff00';
             ctx.font = "18px 'Courier New'";
             ctx.fillText(`Portfolio Returns: +$${Math.floor(score)}`, 20, 30);
@@ -214,6 +215,7 @@
             score = 0;
             frame = 0;
             gameSpeed = 5;
+            spawnCooldown = 100; // Reset safe gap
             isGameOver = false;
             startScreen.classList.add('hidden');
             finalScoreDisplay.classList.add('hidden');
@@ -223,7 +225,7 @@
             isGameOver = true;
             isPlaying = false;
             statusText.innerText = "MARGIN CALLED";
-            statusText.classList.add('red-text');
+            startScreen.classList.add('red-text');
             scoreVal.innerText = Math.floor(score);
             finalScoreDisplay.classList.remove('hidden');
             startScreen.classList.remove('hidden');
@@ -236,17 +238,14 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             drawEnvironment();
-            
             marmot.update();
             marmot.draw();
-            
             handleObstacles();
             
-            // Increase score and speed over time
             score += 0.5;
             frame++;
-            if (frame % 500 === 0) {
-                gameSpeed += 0.5;
+            if (frame % 600 === 0) {
+                gameSpeed += 0.5; // Gradual speed increase
             }
 
             animationId = requestAnimationFrame(gameLoop);
@@ -255,12 +254,12 @@
         // Controls
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
-                e.preventDefault(); // Prevent page scrolling
+                e.preventDefault(); 
                 
                 if (!isPlaying) {
                     resetGame();
                     isPlaying = true;
-                    statusText.classList.remove('red-text');
+                    startScreen.classList.remove('red-text');
                     gameLoop();
                 } else {
                     marmot.jump();
@@ -268,7 +267,7 @@
             }
         });
 
-        // Initial draw
+        // Initialize display
         drawEnvironment();
         marmot.draw();
 
