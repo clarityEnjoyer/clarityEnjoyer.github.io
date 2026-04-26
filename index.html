@@ -75,6 +75,13 @@
             <h2 id="status-text">PRESS SPACE TO TRADE</h2>
             <p id="final-score" class="hidden">Portfolio Peak: $<span id="score-val">0</span></p>
         </div>
+        
+        <audio id="bg-music" loop>
+            <source src="melody1.mp3" type="audio/mpeg">
+        </audio>
+        <audio id="crash-sound">
+            <source src="crash.mp3" type="audio/mpeg">
+        </audio>
     </div>
 
     <script>
@@ -84,6 +91,12 @@
         const statusText = document.getElementById('status-text');
         const finalScoreDisplay = document.getElementById('final-score');
         const scoreVal = document.getElementById('score-val');
+
+        // Audio Setup
+        const bgMusic = document.getElementById('bg-music');
+        const crashSound = document.getElementById('crash-sound');
+        bgMusic.volume = 0.4;
+        crashSound.volume = 0.6;
 
         // Game State
         let isPlaying = false;
@@ -101,7 +114,7 @@
             width: 30,
             height: 30,
             dy: 0,
-            jumpPower: -12, // Slightly stronger jump
+            jumpPower: -12,
             gravity: 0.6,
             grounded: false,
             
@@ -114,7 +127,6 @@
                 this.dy += this.gravity;
                 this.y += this.dy;
 
-                // Ground collision
                 if (this.y + this.height >= canvas.height - 30) {
                     this.y = canvas.height - 30 - this.height;
                     this.dy = 0;
@@ -138,7 +150,6 @@
         class Candlestick {
             constructor() {
                 this.width = 18 + Math.random() * 12;
-                // Height capped heavily to ensure playability
                 this.height = 20 + Math.random() * 35; 
                 this.x = canvas.width;
                 this.y = canvas.height - 30 - this.height;
@@ -148,11 +159,7 @@
             draw() {
                 const color = this.isBearish ? '#ff3333' : '#00ff00';
                 ctx.fillStyle = color;
-                
-                // Draw body
                 ctx.fillRect(this.x, this.y, this.width, this.height);
-                
-                // Draw wick (visual only, 10px extension)
                 ctx.fillRect(this.x + (this.width / 2) - 1, this.y - 10, 2, this.height + 20);
             }
 
@@ -164,10 +171,8 @@
         function handleObstacles() {
             spawnCooldown--;
 
-            // Reliable, spaced spawning
             if (spawnCooldown <= 0) {
                 obstacles.push(new Candlestick());
-                // Random gap between 80 and 150 frames. Shrinks slightly as speed goes up to maintain rhythm.
                 let speedAdjustment = (gameSpeed - 5) * 5;
                 spawnCooldown = Math.max(60, 80 + Math.floor(Math.random() * 70) - speedAdjustment);
             }
@@ -177,7 +182,6 @@
                 obs.update();
                 obs.draw();
 
-                // Collision Detection (Forgiving: applies to body, ignores the thin wicks)
                 if (
                     marmot.x < obs.x + obs.width &&
                     marmot.x + marmot.width - 5 > obs.x && 
@@ -187,7 +191,6 @@
                     gameOver();
                 }
 
-                // Cleanup
                 if (obs.x + obs.width < 0) {
                     obstacles.shift();
                     i--;
@@ -215,7 +218,7 @@
             score = 0;
             frame = 0;
             gameSpeed = 5;
-            spawnCooldown = 100; // Reset safe gap
+            spawnCooldown = 100;
             isGameOver = false;
             startScreen.classList.add('hidden');
             finalScoreDisplay.classList.add('hidden');
@@ -224,6 +227,12 @@
         function gameOver() {
             isGameOver = true;
             isPlaying = false;
+            
+            // Audio handling on crash
+            bgMusic.pause();
+            crashSound.currentTime = 0;
+            crashSound.play().catch(e => console.log("SFX play failed:", e));
+
             statusText.innerText = "MARGIN CALLED";
             startScreen.classList.add('red-text');
             scoreVal.innerText = Math.floor(score);
@@ -245,7 +254,7 @@
             score += 0.5;
             frame++;
             if (frame % 600 === 0) {
-                gameSpeed += 0.5; // Gradual speed increase
+                gameSpeed += 0.5; 
             }
 
             animationId = requestAnimationFrame(gameLoop);
@@ -260,6 +269,14 @@
                     resetGame();
                     isPlaying = true;
                     startScreen.classList.remove('red-text');
+                    
+                    // Audio handling on start/restart
+                    crashSound.pause(); // Ensure crash sound stops if player restarts quickly
+                    crashSound.currentTime = 0;
+                    
+                    bgMusic.currentTime = 0; // Start song from beginning
+                    bgMusic.play().catch(e => console.log("BGM play failed:", e));
+
                     gameLoop();
                 } else {
                     marmot.jump();
